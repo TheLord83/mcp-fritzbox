@@ -1,0 +1,36 @@
+{
+  "name": "mcp-fritzbox",
+  "version": "0.1.0",
+  "description": "MCP server for FRITZ!Box router administration and smart home control",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-fritzbox": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "tsx tests/integration/test-connection.ts"
+  },
+  "keywords": [
+    "mcp",
+    "fritzbox",
+    "smart-home",
+    "tr-064"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.15.0",
+    "fast-xml-parser": "^5.5.11"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}
