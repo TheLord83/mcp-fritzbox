@@ -50,7 +50,7 @@ export function createMcpServer(
     {
       ain: z.string().describe("Actor Identification Number of the thermostat"),
       temperature: z
-        .union([z.number(), z.enum(["ON", "OFF"])])
+        .union([z.enum(["ON", "OFF"]), z.coerce.number()])
         .describe("Target temperature in °C (8.0–28.0), or 'ON' (boost) / 'OFF'"),
     },
     async ({ ain, temperature }) => {
