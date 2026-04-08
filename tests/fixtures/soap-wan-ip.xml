@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:GetExternalIPAddressResponse xmlns:u="urn:dslforum-org:service:WANIPConnection:1">
+      <NewExternalIPAddress>93.184.216.34</NewExternalIPAddress>
+    </u:GetExternalIPAddressResponse>
+  </s:Body>
+</s:Envelope>

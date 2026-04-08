@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:GetInfoResponse xmlns:u="urn:dslforum-org:service:DeviceInfo:1">
+      <NewModelName>FRITZ!Box 7590 AX</NewModelName>
+      <NewSoftwareVersion>8.20</NewSoftwareVersion>
+      <NewSerialNumber>A1B2C3D4E5F6</NewSerialNumber>
+      <NewUpTime>123456</NewUpTime>
+    </u:GetInfoResponse>
+  </s:Body>
+</s:Envelope>

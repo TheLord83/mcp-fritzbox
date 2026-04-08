@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:GetGenericHostEntryResponse xmlns:u="urn:dslforum-org:service:Hosts:1">
+      <NewHostName>desktop-pc</NewHostName>
+      <NewIPAddress>192.168.178.20</NewIPAddress>
+      <NewMACAddress>AA:BB:CC:DD:EE:FF</NewMACAddress>
+      <NewActive>1</NewActive>
+      <NewInterfaceType>Ethernet</NewInterfaceType>
+    </u:GetGenericHostEntryResponse>
+  </s:Body>
+</s:Envelope>
