@@ -36,7 +36,7 @@ async function main() {
       if (req.url === "/sse") {
         sseTransport = new SSEServerTransport("/messages", res);
         await server.connect(sseTransport);
-      } else if (req.url === "/messages" && req.method === "POST") {
+      } else if (req.url?.startsWith("/messages") && req.method === "POST") {
         if (sseTransport) {
           await sseTransport.handlePostMessage(req, res);
         } else {

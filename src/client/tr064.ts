@@ -61,22 +61,11 @@ export class TR064Client {
   }
 
   async getBandwidthStats(): Promise<BandwidthStats> {
-    const result = await this.soapCall(
-      "WANCommonInterfaceConfig:1",
-      "GetTotalBytesReceived",
-      "/igdupnp/control/WANCommonIFC1"
-    );
-    const sent = await this.soapCall(
-      "WANCommonInterfaceConfig:1",
-      "GetTotalBytesSent",
-      "/igdupnp/control/WANCommonIFC1"
-    );
-    const rates = await this.soapCall(
-      "WANCommonInterfaceConfig:1",
-      "GetCommonLinkProperties",
-      "/igdupnp/control/WANCommonIFC1"
-    );
-
+    const [result, sent, rates] = await Promise.all([
+      this.soapCall("WANCommonInterfaceConfig:1", "GetTotalBytesReceived", "/igdupnp/control/WANCommonIFC1"),
+      this.soapCall("WANCommonInterfaceConfig:1", "GetTotalBytesSent", "/igdupnp/control/WANCommonIFC1"),
+      this.soapCall("WANCommonInterfaceConfig:1", "GetCommonLinkProperties", "/igdupnp/control/WANCommonIFC1"),
+    ]);
     return {
       totalBytesReceived: Number(result.NewTotalBytesReceived),
       totalBytesSent: Number(sent.NewTotalBytesSent),
@@ -176,7 +165,7 @@ export class TR064Client {
   ): string {
     const argsXml = args
       ? Object.entries(args)
-          .map(([key, value]) => `<${key}>${value}</${key}>`)
+          .map(([key, value]) => `<${key}>${this.escapeXml(value)}</${key}>`)
           .join("")
       : "";
 
@@ -193,7 +182,16 @@ export class TR064Client {
     const parsed = this.parser.parse(xml);
     const body = parsed["s:Envelope"]?.["s:Body"];
     if (!body) throw new Error(`Invalid SOAP response from ${service}#${action}`);
+    if (body["s:Fault"]) {
+      const fault = body["s:Fault"];
+      const faultString = fault.faultstring ?? fault.detail ?? "Unknown SOAP fault";
+      throw new Error(`SOAP fault from ${service}#${action}: ${faultString}`);
+    }
     const responseKey = `u:${action}Response`;
     return body[responseKey] ?? body[Object.keys(body)[0]];
+  }
+
+  private escapeXml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 }

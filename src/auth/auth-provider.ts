@@ -93,7 +93,7 @@ export class AuthProvider {
     }
   }
 
-  computeResponse(challenge: string, password: string): string {
+  private computeResponse(challenge: string, password: string): string {
     const input = `${challenge}-${password}`;
     const utf16le = Buffer.from(input, "utf-16le");
     const hash = crypto.createHash("md5").update(utf16le).digest("hex");
