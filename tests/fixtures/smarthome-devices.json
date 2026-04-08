@@ -1,0 +1,39 @@
+{
+  "devices": [
+    {
+      "id": "17",
+      "ain": "11657 0240192",
+      "name": "Living Room Thermostat",
+      "productname": "FRITZ!DECT 301",
+      "manufacturer": "AVM",
+      "present": true,
+      "temperature": {
+        "celsius": 215,
+        "offset": -5
+      },
+      "hkr": {
+        "tist": 42,
+        "tsoll": 44,
+        "komfort": 44,
+        "absenk": 36,
+        "battery": 85,
+        "batterylow": false
+      }
+    },
+    {
+      "id": "18",
+      "ain": "11657 0240193",
+      "name": "Office Plug",
+      "productname": "FRITZ!DECT 200",
+      "manufacturer": "AVM",
+      "present": true,
+      "switch": {
+        "state": true
+      },
+      "powermeter": {
+        "power": 15230,
+        "energy": 84500
+      }
+    }
+  ]
+}
