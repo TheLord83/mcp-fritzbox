@@ -1,39 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SmartHomeClient } from "../../src/client/smart-home.js";
 import { AuthProvider } from "../../src/auth/auth-provider.js";
-import { FritzDeviceNotFoundError, FritzInvalidParameterError } from "../../src/types/errors.js";
+import { FritzInvalidParameterError } from "../../src/types/errors.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-const devicesJson = JSON.parse(
-  readFileSync(resolve(__dirname, "../fixtures/smarthome-devices.json"), "utf-8")
+const devicesXml = readFileSync(
+  resolve(__dirname, "../fixtures/smarthome-devices.xml"),
+  "utf-8"
 );
 
 // Mock axios
 vi.mock("axios", () => {
-  const instance = {
+  const mockAxios = {
     get: vi.fn(),
-    put: vi.fn(),
+    post: vi.fn(),
+    create: vi.fn(() => mockAxios),
     defaults: { baseURL: "" },
     interceptors: {
       request: { use: vi.fn() },
       response: { use: vi.fn() },
     },
   };
-  return {
-    default: {
-      create: vi.fn(() => instance),
-      get: vi.fn(),
-      post: vi.fn(),
-    },
-  };
+  return { default: mockAxios };
 });
 
 import axios from "axios";
+const mockAxios = vi.mocked(axios);
 
 describe("SmartHomeClient", () => {
   let client: SmartHomeClient;
-  let mockHttpClient: ReturnType<typeof axios.create>;
   let mockAuthProvider: AuthProvider;
 
   beforeEach(() => {
@@ -44,13 +40,12 @@ describe("SmartHomeClient", () => {
       password: "secret",
     });
     (mockAuthProvider as any).sid = "fakesid123";
-    mockHttpClient = axios.create();
-    client = new SmartHomeClient(mockHttpClient, mockAuthProvider);
+    client = new SmartHomeClient("fritz.box", mockAuthProvider);
   });
 
   describe("listDevices", () => {
-    it("returns parsed smart home devices", async () => {
-      vi.mocked(mockHttpClient.get).mockResolvedValueOnce({ data: devicesJson });
+    it("parses XML device list from homeautoswitch.lua", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: devicesXml });
 
       const devices = await client.listDevices();
 
@@ -65,6 +60,17 @@ describe("SmartHomeClient", () => {
         currentTemperature: 21.0,
         targetTemperature: 22.0,
       });
+      expect(devices[0].battery).toMatchObject({
+        level: 85,
+        low: false,
+      });
+    });
+
+    it("parses switch devices with power meter", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: devicesXml });
+
+      const devices = await client.listDevices();
+
       expect(devices[1]).toMatchObject({
         ain: "11657 0240193",
         name: "Office Plug",
@@ -76,18 +82,47 @@ describe("SmartHomeClient", () => {
         energy: 84500,
       });
     });
+
+    it("calls homeautoswitch.lua with correct URL", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: devicesXml });
+
+      await client.listDevices();
+
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("/webservices/homeautoswitch.lua");
+      expect(url).toContain("switchcmd=getdevicelistinfos");
+      expect(url).toContain("sid=fakesid123");
+    });
   });
 
   describe("setThermostat", () => {
-    it("rounds temperature to nearest 0.5°C", async () => {
-      vi.mocked(mockHttpClient.put).mockResolvedValueOnce({
-        data: { device: devicesJson.devices[0] },
-      });
+    it("encodes temperature as param (temp * 2)", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: "OK" });
 
-      await client.setThermostat("11657 0240192", 21.3);
+      await client.setThermostat("11657 0240192", 21.5);
 
-      const putCall = vi.mocked(mockHttpClient.put).mock.calls[0];
-      expect(putCall[1]).toMatchObject({ temperature: 21.5 });
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("switchcmd=sethkrtsoll");
+      expect(url).toContain("param=43"); // 21.5 * 2 = 43
+      expect(url).toContain("ain=11657%200240192");
+    });
+
+    it("encodes ON as param 254", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: "OK" });
+
+      await client.setThermostat("11657 0240192", "ON");
+
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("param=254");
+    });
+
+    it("encodes OFF as param 253", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: "OK" });
+
+      await client.setThermostat("11657 0240192", "OFF");
+
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("param=253");
     });
 
     it("rejects temperature below 8°C", async () => {
@@ -101,29 +136,25 @@ describe("SmartHomeClient", () => {
         FritzInvalidParameterError
       );
     });
-
-    it("accepts ON and OFF special values", async () => {
-      vi.mocked(mockHttpClient.put).mockResolvedValue({
-        data: { device: devicesJson.devices[0] },
-      });
-
-      await client.setThermostat("11657 0240192", "ON");
-      await client.setThermostat("11657 0240192", "OFF");
-
-      expect(vi.mocked(mockHttpClient.put)).toHaveBeenCalledTimes(2);
-    });
   });
 
   describe("toggleSwitch", () => {
-    it("sends correct state to device", async () => {
-      vi.mocked(mockHttpClient.put).mockResolvedValueOnce({
-        data: { device: devicesJson.devices[1] },
-      });
+    it("calls setswitchon for state=true", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: "1" });
+
+      await client.toggleSwitch("11657 0240193", true);
+
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("switchcmd=setswitchon");
+    });
+
+    it("calls setswitchoff for state=false", async () => {
+      mockAxios.get.mockResolvedValueOnce({ data: "0" });
 
       await client.toggleSwitch("11657 0240193", false);
 
-      const putCall = vi.mocked(mockHttpClient.put).mock.calls[0];
-      expect(putCall[1]).toMatchObject({ state: false });
+      const url = mockAxios.get.mock.calls[0][0] as string;
+      expect(url).toContain("switchcmd=setswitchoff");
     });
   });
 

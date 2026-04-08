@@ -1,7 +1,6 @@
 import { AuthProvider } from "../../src/auth/auth-provider.js";
 import { SmartHomeClient } from "../../src/client/smart-home.js";
 import { TR064Client } from "../../src/client/tr064.js";
-import { createHttpClient } from "../../src/client/http.js";
 
 async function main() {
   const host = process.env.FRITZBOX_HOST ?? "fritz.box";
@@ -18,8 +17,7 @@ async function main() {
   console.log(`User: ${username}\n`);
 
   const auth = new AuthProvider({ host, username, password });
-  const http = createHttpClient(host, auth);
-  const smartHome = new SmartHomeClient(http, auth);
+  const smartHome = new SmartHomeClient(host, auth);
   const tr064 = new TR064Client(host, auth);
 
   let passed = 0;

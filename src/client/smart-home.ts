@@ -1,9 +1,8 @@
-import { AxiosInstance } from "axios";
+import axios from "axios";
+import { XMLParser } from "fast-xml-parser";
 import { AuthProvider } from "../auth/auth-provider.js";
 import {
   SmartHomeDevice,
-  ThermostatState,
-  SwitchState,
   DeviceStats,
 } from "../types/smarthome.js";
 import {
@@ -13,49 +12,71 @@ import {
 
 const AIN_PATTERN = /^[\d ]+$/;
 
+/**
+ * Smart Home client using the AHA-HTTP interface (homeautoswitch.lua).
+ * This is the stable interface available since FRITZ!OS 5.53.
+ * Returns XML responses parsed to JSON.
+ */
 export class SmartHomeClient {
+  private readonly baseUrl: string;
+  private readonly parser = new XMLParser({
+    parseTagValue: false,
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_",
+  });
+
   constructor(
-    private readonly http: AxiosInstance,
+    private readonly host: string,
     private readonly auth: AuthProvider
-  ) {}
+  ) {
+    this.baseUrl = `http://${host}`;
+  }
 
   async listDevices(): Promise<SmartHomeDevice[]> {
-    const sid = await this.auth.getSid();
-    const { data } = await this.http.get(`/api/v0/smarthome/devices?sid=${sid}`);
-    return (data.devices ?? []).map((d: any) => this.mapDevice(d));
+    const xml = await this.command("getdevicelistinfos");
+    const parsed = this.parser.parse(xml);
+    const devicelist = parsed.devicelist;
+    if (!devicelist?.device) return [];
+    const devices = Array.isArray(devicelist.device)
+      ? devicelist.device
+      : [devicelist.device];
+    return devices.map((d: any) => this.mapDevice(d));
   }
 
   async setThermostat(
     ain: string,
     temperature: number | "ON" | "OFF"
-  ): Promise<SmartHomeDevice> {
+  ): Promise<{ ain: string; temperature: number | "ON" | "OFF" }> {
     this.validateAin(ain);
-    const normalizedTemp = this.validateTemperature(temperature);
-    const sid = await this.auth.getSid();
-    const { data } = await this.http.put(
-      `/api/v0/smarthome/devices/${encodeURIComponent(ain)}?sid=${sid}`,
-      { temperature: normalizedTemp }
-    );
-    return this.mapDevice(data.device ?? data);
+    const param = this.encodeTemperature(temperature);
+    await this.command("sethkrtsoll", ain, `&param=${param}`);
+    return { ain, temperature: typeof temperature === "number" ? Math.round(temperature * 2) / 2 : temperature };
   }
 
-  async toggleSwitch(ain: string, state: boolean): Promise<SmartHomeDevice> {
+  async toggleSwitch(ain: string, state: boolean): Promise<{ ain: string; state: boolean }> {
     this.validateAin(ain);
-    const sid = await this.auth.getSid();
-    const { data } = await this.http.put(
-      `/api/v0/smarthome/devices/${encodeURIComponent(ain)}?sid=${sid}`,
-      { state }
-    );
-    return this.mapDevice(data.device ?? data);
+    const cmd = state ? "setswitchon" : "setswitchoff";
+    await this.command(cmd, ain);
+    return { ain, state };
   }
 
   async getDeviceStats(ain: string): Promise<DeviceStats> {
     this.validateAin(ain);
+    const xml = await this.command("getbasicdevicestats", ain);
+    const parsed = this.parser.parse(xml);
+    return {
+      ain,
+      name: "",
+      stats: parsed,
+    };
+  }
+
+  private async command(cmd: string, ain?: string, extra = ""): Promise<string> {
     const sid = await this.auth.getSid();
-    const { data } = await this.http.get(
-      `/api/v0/smarthome/devices/${encodeURIComponent(ain)}/statistics?sid=${sid}`
-    );
-    return data;
+    const ainParam = ain ? `&ain=${encodeURIComponent(ain)}` : "";
+    const url = `${this.baseUrl}/webservices/homeautoswitch.lua?switchcmd=${cmd}${ainParam}&sid=${sid}${extra}`;
+    const { data } = await axios.get(url, { timeout: 10_000 });
+    return String(data);
   }
 
   private validateAin(ain: string): void {
@@ -66,51 +87,54 @@ export class SmartHomeClient {
     }
   }
 
-  private validateTemperature(temp: number | "ON" | "OFF"): number | "ON" | "OFF" {
-    if (temp === "ON" || temp === "OFF") return temp;
+  private encodeTemperature(temp: number | "ON" | "OFF"): number {
+    if (temp === "ON") return 254;
+    if (temp === "OFF") return 253;
     if (typeof temp !== "number" || temp < 8.0 || temp > 28.0) {
       throw new FritzInvalidParameterError(
         `Temperature must be between 8.0 and 28.0°C, or "ON"/"OFF". Got: ${temp}`
       );
     }
-    return Math.round(temp * 2) / 2;
+    return Math.round(temp * 2);
   }
 
   private mapDevice(raw: any): SmartHomeDevice {
-    const hasThermostat = !!raw.hkr;
-    const hasSwitch = !!raw.switch;
+    const functionbitmask = Number(raw["@_functionbitmask"] ?? 0);
+    const hasThermostat = !!(functionbitmask & (1 << 6)); // Bit 6 = HKR
+    const hasSwitch = !!(functionbitmask & (1 << 9));      // Bit 9 = switch
+    const hasPowermeter = !!(functionbitmask & (1 << 7));  // Bit 7 = power meter
 
     const device: SmartHomeDevice = {
-      ain: raw.ain,
-      name: raw.name,
-      productname: raw.productname,
-      manufacturer: raw.manufacturer,
-      present: raw.present,
+      ain: raw["@_identifier"]?.trim() ?? "",
+      name: raw.name ?? "",
+      productname: raw["@_productname"] ?? "",
+      manufacturer: raw["@_manufacturer"] ?? "",
+      present: raw.present === "1",
       type: hasThermostat ? "thermostat" : hasSwitch ? "switch" : "unknown",
     };
 
-    if (hasThermostat) {
-      const rawCelsius = raw.temperature?.celsius ?? 0;
-      const offset = raw.temperature?.offset ?? 0;
+    if (hasThermostat && raw.hkr) {
       device.thermostat = {
-        currentTemperature: (rawCelsius + offset) / 10,
-        targetTemperature: this.decodeTsoll(raw.hkr.tsoll),
-        comfort: (raw.hkr.komfort ?? 0) / 2,
-        economy: (raw.hkr.absenk ?? 0) / 2,
+        currentTemperature: raw.temperature
+          ? Number(raw.temperature.celsius) / 10
+          : 0,
+        targetTemperature: this.decodeTsoll(Number(raw.hkr.tsoll)),
+        comfort: Number(raw.hkr.komfort) / 2,
+        economy: Number(raw.hkr.absenk) / 2,
       };
       if (raw.hkr.battery !== undefined) {
         device.battery = {
-          level: raw.hkr.battery,
-          low: raw.hkr.batterylow ?? false,
+          level: Number(raw.hkr.battery),
+          low: raw.hkr.batterylow === "1",
         };
       }
     }
 
-    if (hasSwitch) {
+    if ((hasSwitch || hasPowermeter) && raw.switch) {
       device.switch = {
-        on: raw.switch.state === true || raw.switch.state === 1,
-        power: raw.powermeter?.power ?? 0,
-        energy: raw.powermeter?.energy ?? 0,
+        on: raw.switch.state === "1",
+        power: Number(raw.powermeter?.power ?? 0),
+        energy: Number(raw.powermeter?.energy ?? 0),
       };
     }
 

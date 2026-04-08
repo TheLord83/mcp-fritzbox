@@ -7,7 +7,6 @@ import { resolveConfig } from "./types/config.js";
 import { AuthProvider } from "./auth/auth-provider.js";
 import { SmartHomeClient } from "./client/smart-home.js";
 import { TR064Client } from "./client/tr064.js";
-import { createHttpClient } from "./client/http.js";
 import { createMcpServer } from "./server.js";
 
 async function main() {
@@ -22,8 +21,7 @@ async function main() {
   }
 
   const authProvider = new AuthProvider(config.fritzbox);
-  const httpClient = createHttpClient(config.fritzbox.host, authProvider);
-  const smartHome = new SmartHomeClient(httpClient, authProvider);
+  const smartHome = new SmartHomeClient(config.fritzbox.host, authProvider);
   const tr064 = new TR064Client(config.fritzbox.host, authProvider);
   const server = createMcpServer(smartHome, tr064);
 
