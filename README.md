@@ -61,14 +61,10 @@ MCP Server (server.ts)
 
 ### 2. Install
 
-```bash
-npm install mcp-fritzbox
-```
-
-Or clone and build from source:
+**From GitHub:**
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/ghbalf/mcp-fritzbox.git
 cd mcp-fritzbox
 npm install
 npm run build
@@ -87,12 +83,30 @@ export FRITZBOX_PASSWORD=your_pass
 Or pass CLI flags:
 
 ```bash
-mcp-fritzbox --host 192.168.178.1 --user admin --pass secret
+node dist/index.js --host 192.168.178.1 --user admin --pass secret
 ```
 
 CLI flags override environment variables.
 
 ### 4. Connect to an MCP Client
+
+**Claude Code** — add a `.mcp.json` to your project root:
+
+```json
+{
+  "mcpServers": {
+    "fritzbox": {
+      "command": "node",
+      "args": ["/path/to/mcp-fritzbox/dist/index.js"],
+      "env": {
+        "FRITZBOX_HOST": "fritz.box",
+        "FRITZBOX_USERNAME": "your_user",
+        "FRITZBOX_PASSWORD": "your_pass"
+      }
+    }
+  }
+}
+```
 
 **Claude Desktop** — add to `claude_desktop_config.json`:
 
@@ -100,8 +114,8 @@ CLI flags override environment variables.
 {
   "mcpServers": {
     "fritzbox": {
-      "command": "npx",
-      "args": ["mcp-fritzbox"],
+      "command": "node",
+      "args": ["/path/to/mcp-fritzbox/dist/index.js"],
       "env": {
         "FRITZBOX_HOST": "fritz.box",
         "FRITZBOX_USERNAME": "your_user",
@@ -115,7 +129,7 @@ CLI flags override environment variables.
 **HTTP/SSE mode** (for remote clients):
 
 ```bash
-mcp-fritzbox --http --port 3000
+node dist/index.js --http --port 3000
 # SSE endpoint: http://localhost:3000/sse
 # Message endpoint: http://localhost:3000/messages
 ```
