@@ -153,21 +153,26 @@ export class TR064Client {
     );
     const count = Number(countResult.NewHostNumberOfEntries);
 
-    const entries = await Promise.all(
-      Array.from({ length: count }, (_, i) =>
-        this.soapCall("Hosts:1", "GetGenericHostEntry", "/upnp/control/hosts", {
-          NewIndex: String(i),
-        })
-      )
-    );
+    // Fetch host entries sequentially — the FRITZ!Box returns 500
+    // when bombarded with too many concurrent SOAP requests.
+    const devices: NetworkDevice[] = [];
+    for (let i = 0; i < count; i++) {
+      const entry = await this.soapCall(
+        "Hosts:1",
+        "GetGenericHostEntry",
+        "/upnp/control/hosts",
+        { NewIndex: String(i) }
+      );
+      devices.push({
+        hostname: entry.NewHostName ?? "",
+        ipAddress: entry.NewIPAddress ?? "",
+        macAddress: entry.NewMACAddress ?? "",
+        active: entry.NewActive === "1" || entry.NewActive === 1,
+        interfaceType: entry.NewInterfaceType ?? "unknown",
+      });
+    }
 
-    return entries.map((entry) => ({
-      hostname: entry.NewHostName ?? "",
-      ipAddress: entry.NewIPAddress ?? "",
-      macAddress: entry.NewMACAddress ?? "",
-      active: entry.NewActive === "1" || entry.NewActive === 1,
-      interfaceType: entry.NewInterfaceType ?? "unknown",
-    }));
+    return devices;
   }
 
   private async soapCall(
