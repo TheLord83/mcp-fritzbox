@@ -26,15 +26,39 @@ export function createMcpServer(
     {},
     async () => {
       try {
-        const [smartHomeDevices, networkDevices] = await Promise.all([
+        // A repeater has no AHA interface at all, and a box without Smart Home
+        // rights fails there too. Both parts are collected independently so one
+        // missing capability does not blank out the other.
+        const [smartHomeResult, networkResult] = await Promise.allSettled([
           smartHome.listDevices(),
           tr064.listNetworkDevices(),
         ]);
+        if (
+          smartHomeResult.status === "rejected" &&
+          networkResult.status === "rejected"
+        ) {
+          throw networkResult.reason ?? smartHomeResult.reason;
+        }
+        const payload: {
+          smartHomeDevices: unknown[];
+          networkDevices: unknown[];
+          smartHomeError?: string;
+        } = {
+          smartHomeDevices:
+            smartHomeResult.status === "fulfilled" ? smartHomeResult.value : [],
+          networkDevices:
+            networkResult.status === "fulfilled" ? networkResult.value : [],
+        };
+        if (smartHomeResult.status === "rejected") {
+          payload.smartHomeError = String(
+            (smartHomeResult.reason as Error)?.message ?? smartHomeResult.reason
+          );
+        }
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ smartHomeDevices, networkDevices }, null, 2),
+              text: JSON.stringify(payload, null, 2),
             },
           ],
         };
