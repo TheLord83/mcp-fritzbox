@@ -72,11 +72,24 @@ export class SmartHomeClient {
   }
 
   private async command(cmd: string, ain?: string, extra = ""): Promise<string> {
-    const sid = await this.auth.getSid();
     const ainParam = ain ? `&ain=${encodeURIComponent(ain)}` : "";
-    const url = `${this.baseUrl}/webservices/homeautoswitch.lua?switchcmd=${cmd}${ainParam}&sid=${sid}${extra}`;
-    const { data } = await axios.get(url, { timeout: 10_000 });
-    return String(data);
+    const buildUrl = (sid: string) =>
+      `${this.baseUrl}/webservices/homeautoswitch.lua?switchcmd=${cmd}${ainParam}&sid=${sid}${extra}`;
+
+    const sid = await this.auth.getSid();
+    try {
+      const { data } = await axios.get(buildUrl(sid), { timeout: 10_000 });
+      return String(data);
+    } catch (error) {
+      // 401/403 on the AHA interface means the cached SID is expired or invalid.
+      // Re-authenticate once and retry, mirroring the TR-064 client interceptor.
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status !== 401 && status !== 403) throw error;
+      const newSid = await this.auth.reauth();
+      const { data } = await axios.get(buildUrl(newSid), { timeout: 10_000 });
+      return String(data);
+    }
   }
 
   private validateAin(ain: string): void {
